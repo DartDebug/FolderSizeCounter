@@ -1,5 +1,7 @@
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 
 public class FolderSizeCounter
 {
@@ -8,61 +10,94 @@ public class FolderSizeCounter
     {
         String path = "";
         String pathSource = "";
-        String pathTarget = "";
-
-        System.out.printf("Размер папки: %,d байт\n", sizeCountForAllFolders(path));
-        copyFolder(pathSource, pathTarget);
+        String pathDestination = "";
+//        copyFolder(pathSource, pathDestination);
+        formatPrintSize(sizeCountWithWalk(path));
+        copyFolderWithWalk(pathSource, pathDestination);
     }
 
-    private static long sizeCountForAllFolders(String path)
+    private static void formatPrintSize(long size)
     {
-        long localSize = 0;
+        int count = 0;
+        String[] prefixSize = {"b", "Kb", "Mb", "Gb", "Tb"};
+        while(size / 1024 != 0)
+        {
+            size = size / 1024;
+            count++;
+        }
+        System.out.printf("Размер папки: %,d %s\n", size, prefixSize[count]);
+    }
+
+    private static  long sizeCountWithWalk(String path)
+    {
+        size = 0;
         try
         {
-            Files.list(Path.of(path)).forEach(file ->
-            {
-                try
-                {
-//                    Расскомментировать для подсчета всех вложеных каталогов
-//                    if (Files.isDirectory(Path.of(file.toString()))) size += sizeCountForAllFolders(file.toString());
-                    size += Files.size(Path.of(file.toString()));
-                }
-                catch (Exception ex)
-                {
-                    ex.printStackTrace();
-                }
-            });
-            localSize = size;
-            size = 0;
-            return localSize;
+            return Files.walk(Path.of(path)).map(Path::toFile).filter(File::isFile)
+                    .mapToLong(File::length).reduce(0, Long::sum);
         }
         catch (Exception ex)
         {
             ex.printStackTrace();
         }
-        return localSize;
+        return size;
     }
 
-    private static void copyFolder(String sourceFolderName, String targetFolderName)
+//        private static void copyFolder(String sourceFolderName, String targetFolderName)
+//    {
+//        try
+//        {
+//            File folder = new File(sourceFolderName);
+//            File[] filesList = folder.listFiles();
+//            Path destFolder = Paths.get(targetFolderName);
+//            if (filesList != null)
+//            {
+//                for (var file : filesList)
+//                    Files.copy(file.toPath(), destFolder.resolve(file.getName()), StandardCopyOption.REPLACE_EXISTING);
+//                for (var file : filesList)
+//                    if (file.isDirectory())
+//                        copyFolder(sourceFolderName + "\\" + file.getName(),
+//                                targetFolderName + "\\" + file.getName());
+//            }
+//        }
+//        catch (Exception ex)
+//        {
+//            ex.printStackTrace();
+//        }
+//    }
+
+    private static void copyFolderWithWalk(String sourceFolderName, String targetFolderName)
     {
+        Path source = Paths.get(sourceFolderName);
+        Path destination = Paths.get(targetFolderName);
         try
         {
-            File folder = new File(sourceFolderName);
-            File[] filesList = folder.listFiles();
-            Path destFolder = Paths.get(targetFolderName);
-            if (filesList != null)
-            {
-                for (var file : filesList)
-                    Files.copy(file.toPath(), destFolder.resolve(file.getName()), StandardCopyOption.REPLACE_EXISTING);
-                for (var file : filesList)
-                    if (file.isDirectory())
-                        copyFolder(sourceFolderName + "\\" + file.getName(),
-                                targetFolderName + "\\" + file.getName());
-            }
+            Files.walkFileTree(source, new CopyVisitor(source, destination));
         }
-        catch (Exception ex)
+        catch (IOException ex)
         {
             ex.printStackTrace();
+        }
+    }
+    private static class CopyVisitor extends SimpleFileVisitor
+    {
+        Path source, destination;
+        CopyVisitor(Path sourceFolder, Path destinationFolder)
+        {
+            this.source = sourceFolder;
+            this.destination = destinationFolder;
+        }
+        public FileVisitResult visitFile(Object path, BasicFileAttributes attrs) throws IOException {
+            Path newd = destination.resolve(source.relativize((Path)path));
+            Files.copy((Path)path, newd, StandardCopyOption.REPLACE_EXISTING);
+            return FileVisitResult.CONTINUE;
+        }
+
+        public FileVisitResult preVisitDirectory(Object path, BasicFileAttributes fileAttributes) throws IOException
+        {
+            Path newd = destination.resolve(source.relativize((Path)path));
+            Files.copy((Path)path, newd, StandardCopyOption.REPLACE_EXISTING);
+            return FileVisitResult.CONTINUE;
         }
     }
 }
